@@ -4,19 +4,18 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 include { samplesheetToList } from 'plugin/nf-schema'
-include { CONCATENATE as CONCATENATE_OUTPUT } from  '../modules/local/concatenate/main'
-include { CONCATENATE as CONCATENATE_TBL } from  '../modules/local/concatenate/main'
+include { CONCATENATE } from  '../modules/local/concatenate/main'
 include { FETCHDB } from '../subworkflows/local/fetchdb/main'
 include { SEQKIT_TRANSLATE } from '../modules/nf-core/seqkit/translate/main'
 include { NAIL_SEARCH } from '../modules/nf-core/nail/search/main'
-
+include { PARSEHMMSEARCHCOVERAGE } from '../modules/local/parsehmmsearchcoverage/main'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-workflow GENOMEANNOTATION {
+workflow NAILTRIAL {
     main:
     ch_versions = Channel.empty()
 
@@ -97,18 +96,17 @@ workflow GENOMEANNOTATION {
         }
 
     NAIL_SEARCH(ch_chunked_pfam_in, false)
-    ch_versions = ch_versions.mix(NAIL.out.versions)
+    ch_versions = ch_versions.mix(NAIL_SEARCH.out.versions)
 
-    CONCATENATE_OUTPUT(
-        NAIL.out.output
-        .groupTuple()
-        .map{ meta, results -> tuple(meta, "${meta.id}.txt", results) }
-    )
-
-    CONCATENATE_TBL(
-        NAIL.out.target_summary
+    CONCATENATE(
+        NAIL_SEARCH.out.target_summary
         .groupTuple()
         .map{ meta, results -> tuple(meta, "${meta.id}.tbl", results) }
+    )
+ 
+    PARSEHMMSEARCHCOVERAGE(
+        CONCATENATE.out.concatenated_file
+            .combine(pfam_db)
     )
 
     emit:
