@@ -1,11 +1,2 @@
 sample,fasta
-sample0,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample0/reads/merged/sample0.seqtk-seq.fasta.gz
-sample1,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample1/reads/merged/sample1.seqtk-seq.fasta.gz
-sample2,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample2/reads/merged/sample2.seqtk-seq.fasta.gz
-sample3,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample3/reads/merged/sample3.seqtk-seq.fasta.gz
-sample4,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample4/reads/merged/sample4.seqtk-seq.fasta.gz
-sample5,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample5/reads/merged/sample5.seqtk-seq.fasta.gz
-sample6,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample6/reads/merged/sample6.seqtk-seq.fasta.gz
-sample7,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample7/reads/merged/sample7.seqtk-seq.fasta.gz
-sample8,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample8/reads/merged/sample8.seqtk-seq.fasta.gz
-sample9,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/rrap_runs/cami_marine/results/sample9/reads/merged/sample9.seqtk-seq.fasta.gz
+sample0_mini,/hps/nobackup/rdf/metagenomics/service-team/users/timrozday/nail-trial/seqs/sample0.mini.fasta

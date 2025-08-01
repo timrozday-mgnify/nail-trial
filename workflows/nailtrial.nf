@@ -4,7 +4,6 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 include { samplesheetToList } from 'plugin/nf-schema'
-include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { CONCATENATE as CONCATENATE_OUTPUT } from  '../modules/local/concatenate/main'
 include { CONCATENATE as CONCATENATE_TBL } from  '../modules/local/concatenate/main'
 include { FETCHDB } from '../subworkflows/local/fetchdb/main'
