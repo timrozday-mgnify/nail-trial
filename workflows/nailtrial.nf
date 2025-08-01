@@ -3,12 +3,13 @@
     IMPORT MODULES / SUBWORKFLOWS / FUNCTIONS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-include { FASTQC                 } from '../modules/nf-core/fastqc/main'
-include { MULTIQC                } from '../modules/nf-core/multiqc/main'
-include { paramsSummaryMap       } from 'plugin/nf-schema'
-include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
+include { samplesheetToList } from 'plugin/nf-schema'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
-include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_nailtrial_pipeline'
+include { CONCATENATE as CONCATENATE_OUTPUT } from  '../modules/local/concatenate/main'
+include { CONCATENATE as CONCATENATE_TBL } from  '../modules/local/concatenate/main'
+include { FETCHDB } from '../subworkflows/local/fetchdb/main'
+include { SEQKIT_TRANSLATE } from '../modules/nf-core/seqkit/translate/main'
+include { NAIL_SEARCH } from '../modules/nf-core/nail/search/main'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -16,78 +17,103 @@ include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_nail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-workflow NAILTRIAL {
-
-    take:
-    ch_samplesheet // channel: samplesheet read in from --input
+workflow GENOMEANNOTATION {
     main:
-
     ch_versions = Channel.empty()
-    ch_multiqc_files = Channel.empty()
-    //
-    // MODULE: Run FastQC
-    //
-    FASTQC (
-        ch_samplesheet
-    )
-    ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]})
-    ch_versions = ch_versions.mix(FASTQC.out.versions.first())
 
-    //
-    // Collate and save software versions
-    //
-    softwareVersionsToYAML(ch_versions)
-        .collectFile(
-            storeDir: "${params.outdir}/pipeline_info",
-            name: 'nf_core_'  +  'nailtrial_software_'  + 'mqc_'  + 'versions.yml',
-            sort: true,
-            newLine: true
-        ).set { ch_collated_versions }
-
-
-    //
-    // MODULE: MultiQC
-    //
-    ch_multiqc_config        = Channel.fromPath(
-        "$projectDir/assets/multiqc_config.yml", checkIfExists: true)
-    ch_multiqc_custom_config = params.multiqc_config ?
-        Channel.fromPath(params.multiqc_config, checkIfExists: true) :
-        Channel.empty()
-    ch_multiqc_logo          = params.multiqc_logo ?
-        Channel.fromPath(params.multiqc_logo, checkIfExists: true) :
-        Channel.empty()
-
-    summary_params      = paramsSummaryMap(
-        workflow, parameters_schema: "nextflow_schema.json")
-    ch_workflow_summary = Channel.value(paramsSummaryMultiqc(summary_params))
-    ch_multiqc_files = ch_multiqc_files.mix(
-        ch_workflow_summary.collectFile(name: 'workflow_summary_mqc.yaml'))
-    ch_multiqc_custom_methods_description = params.multiqc_methods_description ?
-        file(params.multiqc_methods_description, checkIfExists: true) :
-        file("$projectDir/assets/methods_description_template.yml", checkIfExists: true)
-    ch_methods_description                = Channel.value(
-        methodsDescriptionText(ch_multiqc_custom_methods_description))
-
-    ch_multiqc_files = ch_multiqc_files.mix(ch_collated_versions)
-    ch_multiqc_files = ch_multiqc_files.mix(
-        ch_methods_description.collectFile(
-            name: 'methods_description_mqc.yaml',
-            sort: true
+    // Fetch databases
+    db_ch = Channel
+        .from(
+            params.databases.collect { k, v ->
+                if (v instanceof Map) {
+                    if (v.containsKey('chunked') && v['chunked']) {
+                        v.collect { k_, v_ ->
+                            if (v_ instanceof Map) {
+                                if (v_.containsKey('base_dir')) {
+                                    return [id: k, chunk_id: k_] + v_
+                                }
+                            }
+                        }
+                    } else if (v.containsKey('base_dir')) {
+                        return [id: k] + v
+                    }
+                }
+            }.flatten()
         )
+        .filter { it }
+
+    FETCHDB(db_ch, "${projectDir}/${params.databases.cache_path}")
+    dbs_path_ch = FETCHDB.out.dbs
+
+    dbs_path_ch
+        .branch { meta, _fp ->
+            pfam: meta.id == 'pfam'
+        }
+        .set { dbs }
+
+
+    // Parse samplesheet and fetch reads
+    samplesheet = Channel.fromList(samplesheetToList(params.samplesheet, "${workflow.projectDir}/assets/schema_input.json"))
+
+    fasta_ch = samplesheet.map {
+        sample, fasta ->
+        [
+            ['id': sample],
+            fasta,
+        ]
+    }
+
+    SEQKIT_TRANSLATE(fasta_ch)
+
+    pfam_db = dbs.pfam
+        .map { meta, fp ->
+            file("${fp}/${meta.base_dir}/${meta.files.hmm}")
+        }
+
+    ch_chunked_fasta = SEQKIT_TRANSLATE.out.fastx
+        .splitFasta(
+            size: params.nail_chunksize,
+            elem: 1,
+            file: true
+        )
+
+    ch_chunked_pfam_in = ch_chunked_fasta
+        .combine(pfam_db)
+        .map { meta, reads, db -> tuple(meta, tuple(reads, db)) }
+    
+    ch_chunked_pfam_in = ch_chunked_pfam_in
+        .groupTuple()
+        .flatMap {
+            meta, chunks ->
+            def chunks_ = chunks instanceof Collection ? chunks : [chunks]
+            def chunksize = chunks_.size()
+            return chunks_.collect {
+                chunk ->
+                tuple(groupKey(meta, chunksize), chunk)
+            }
+        }
+        .map { meta, v ->
+            def (reads, db) = v
+            return [meta, reads, db] 
+        }
+
+    NAIL_SEARCH(ch_chunked_pfam_in, false)
+    ch_versions = ch_versions.mix(NAIL.out.versions)
+
+    CONCATENATE_OUTPUT(
+        NAIL.out.output
+        .groupTuple()
+        .map{ meta, results -> tuple(meta, "${meta.id}.txt", results) }
     )
 
-    MULTIQC (
-        ch_multiqc_files.collect(),
-        ch_multiqc_config.toList(),
-        ch_multiqc_custom_config.toList(),
-        ch_multiqc_logo.toList(),
-        [],
-        []
+    CONCATENATE_TBL(
+        NAIL.out.target_summary
+        .groupTuple()
+        .map{ meta, results -> tuple(meta, "${meta.id}.tbl", results) }
     )
 
-    emit:multiqc_report = MULTIQC.out.report.toList() // channel: /path/to/multiqc_report.html
-    versions       = ch_versions                 // channel: [ path(versions.yml) ]
-
+    emit:
+    versions = ch_versions                 // channel: [ path(versions.yml) ]
 }
 
 /*
